@@ -560,7 +560,8 @@ function renderTimeline(){
   const yl=Y(last.p13), yf=Y(last.p22), sep = Math.abs(yl-yf)<14 ? (yl<yf?-7:7) : 0;
   g+=`<text class="endlbl" x="${X(last.t)+6}" y="${yl+4+sep}" fill="var(--c13)">${last.p13.toFixed(2).replace('.',',')}%</text>`;
   g+=`<text class="endlbl" x="${X(last.t)+6}" y="${yf+4-sep}" fill="var(--c22)">${last.p22.toFixed(2).replace('.',',')}%</text>`;
-  g+=`<text class="ax" x="${W-R+6}" y="${Ya(last.pst)+4}" fill="var(--gold)">${last.pst.toFixed(1).replace('.',',')}% apur.</text>`;
+  let ya = Ya(last.pst)+4; for (const yy of [yl+4+sep, yf+4-sep]) if (Math.abs(ya-yy)<14) ya = yy + (ya>=yy?14:-14);
+  g+=`<text class="ax" x="${W-R+6}" y="${ya}" fill="var(--gold)">${last.pst.toFixed(1).replace('.',',')}% apur.</text>`;
   g+=`<line class="xh" id="tlxh" y1="${T}" y2="${H-B}"/><rect id="tlhit" x="${L}" y="${T}" width="${W-L-R}" height="${H-T-B}" fill="transparent"/>`;
   el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">${g}</svg>
     <div class="tlleg"><span><i style="background:var(--c13)"></i>Lula</span><span><i style="background:var(--c22)"></i>Flávio Bolsonaro</span><span><i style="background:var(--gold);height:0;border-top:2px dashed var(--gold)"></i>Seções apuradas (eixo 0–100%)</span><span>${pts.length} totalizações registradas</span></div>`;
