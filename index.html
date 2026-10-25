@@ -74,6 +74,16 @@
   .prog{height:8px;border-radius:999px;background:rgba(255,255,255,.08);margin-top:8px;overflow:hidden}
   .prog div{height:100%;background:linear-gradient(90deg,var(--gold),var(--gold2));transition:width .6s ease}
 
+  .tl{position:relative;margin-top:6px}
+  .tl svg{width:100%;height:auto;display:block;font-family:Inter,system-ui}
+  .tl .ax{fill:var(--muted);font-size:11px}
+  .tl .gl{stroke:rgba(255,255,255,.07)}
+  .tl .ln{fill:none;stroke-width:2.5;stroke-linejoin:round;stroke-linecap:round}
+  .tl .ap{fill:none;stroke:var(--gold);stroke-width:1.5;stroke-dasharray:3 3;opacity:.8}
+  .tl .xh{stroke:#fff;stroke-opacity:.5;stroke-width:1;display:none}
+  .tl .endlbl{font-size:12px;font-weight:800}
+  .tl .tlleg{display:flex;gap:16px;justify-content:center;margin-top:8px;font-size:12px;color:var(--ink2);flex-wrap:wrap}
+  .tl .tlleg i{width:14px;height:3px;border-radius:2px;display:inline-block;margin-right:6px;vertical-align:middle}
   .grid2{display:grid;grid-template-columns:1.1fr .9fr;gap:16px;margin-top:16px}
   .map{max-width:520px;margin:8px auto 0;position:relative}
   .map svg{width:100%;height:auto;display:block}
@@ -179,6 +189,12 @@
     </div>
     <div class="bar" id="pbar"><div class="l" style="width:50%"></div><div class="r" style="width:50%"></div></div>
     <p class="note" id="pjNote">Método: para cada estado, a parte já apurada entra como está e a parte que falta é estimada pelo resultado do 1º turno naquele estado corrigido pela variação (“swing”) observada nos estados em apuração. Os estados são ponderados pelo comparecimento do 1º turno, o que corrige a ordem diferente em que as urnas chegam. Dentro de cada estado as primeiras urnas tendem a vir de cidades menores, por isso a margem começa larga e encolhe com a apuração.</p>
+  </section>
+
+  <section class="card" style="margin-top:16px">
+    <h2>Linha do tempo da apuração</h2>
+    <p class="sub">Percentual de votos válidos de cada candidato a cada totalização do TSE · a linha tracejada é o % de seções apuradas</p>
+    <div class="tl" id="tl"></div>
   </section>
 
   <div class="grid2">
@@ -509,6 +525,59 @@ function renderGov(uf, doc){
     `<div class="gbar">${cs.map((c,i)=>`<div style="background:${pal[i]};width:${total?c.vap/total*100:50}%"></div>`).join('')}</div>`;
 }
 
+// ---------- linha do tempo ----------
+let hist = []; // {h,pst,v13,v22,tv,vv}
+function histAdd(pt){ if (!pt || !pt.h) return; if (!hist.some(x=>x.h===pt.h)) { hist.push(pt); hist.sort((a,b)=>a.h.localeCompare(b.h)); } }
+async function loadHist(){
+  try { const r = await fetch(`historico.json?nocache=${Date.now()}`, {cache:'no-store'}); if (r.ok) (await r.json()).forEach(histAdd); } catch(e){}
+  try { (JSON.parse(localStorage.getItem('hist2t2026')||'[]')).forEach(histAdd); } catch(e){}
+}
+function histFromDoc(doc){
+  const cs = candidates(doc); const a = cs.find(c=>c.n==='13'), b = cs.find(c=>c.n==='22');
+  if (!doc.hg || toNum(doc.v?.tv)===0) return null;
+  return {h:doc.hg, d:doc.dg, pst:toNum(doc.s?.pst), v13:a?a.vap:0, v22:b?b.vap:0, tv:toNum(doc.v?.tv), vv:toNum(doc.v?.vv)};
+}
+const tmin = h => { const [H,M,S]=h.split(':').map(Number); return H*60+M+S/60; };
+function renderTimeline(){
+  const el = document.getElementById('tl'); if (!el) return;
+  const pts = hist.filter(p=>p.vv>0).map(p=>({...p, p13:p.v13/p.vv*100, p22:p.v22/p.vv*100, t:tmin(p.h)}));
+  if (pts.length<2){ el.innerHTML = '<p class="note">Ainda sem pontos suficientes: a linha começa a ser desenhada a partir da segunda totalização registrada.</p>'; return; }
+  const W=900, H=300, L=46, R=70, T=16, B=34;
+  const t0 = Math.min(pts[0].t, 17*60), t1 = Math.max(pts[pts.length-1].t, t0+30);
+  const ys = pts.flatMap(p=>[p.p13,p.p22]); let y0 = Math.floor(Math.min(...ys)-1), y1 = Math.ceil(Math.max(...ys)+1);
+  y0 = Math.max(0, Math.min(y0, 44)); y1 = Math.min(100, Math.max(y1, 56));
+  const X = t => L + (t-t0)/(t1-t0)*(W-L-R), Y = v => T + (y1-v)/(y1-y0)*(H-T-B), Ya = v => T + (100-v)/100*(H-T-B);
+  const path = k => pts.map((p,i)=>(i?'L':'M')+X(p.t).toFixed(1)+','+Y(p[k]).toFixed(1)).join(' ');
+  const hh = h => `${String(Math.floor(h/60)).padStart(2,'0')}:${String(Math.round(h%60)).padStart(2,'0')}`;
+  let g='';
+  for (let v=Math.ceil(y0); v<=y1; v++){ if ((y1-y0)>12 && v%2) continue; g+=`<line class="gl" x1="${L}" x2="${W-R}" y1="${Y(v)}" y2="${Y(v)}"/><text class="ax" x="${L-6}" y="${Y(v)+4}" text-anchor="end">${v}%</text>`; }
+  const step = (t1-t0)>240 ? 60 : (t1-t0)>90 ? 30 : 15;
+  for (let t=Math.ceil(t0/step)*step; t<=t1; t+=step) g+=`<text class="ax" x="${X(t)}" y="${H-B+18}" text-anchor="middle">${hh(t)}</text>`;
+  g+=`<line class="gl" x1="${L}" x2="${W-R}" y1="${Y(50)}" y2="${Y(50)}" style="stroke:rgba(255,255,255,.25);stroke-dasharray:4 4"/>`;
+  g+=`<path class="ap" d="${pts.map((p,i)=>(i?'L':'M')+X(p.t).toFixed(1)+','+Ya(p.pst).toFixed(1)).join(' ')}"/>`;
+  g+=`<path class="ln" style="stroke:var(--c13)" d="${path('p13')}"/><path class="ln" style="stroke:var(--c22)" d="${path('p22')}"/>`;
+  const last = pts[pts.length-1];
+  const yl=Y(last.p13), yf=Y(last.p22), sep = Math.abs(yl-yf)<14 ? (yl<yf?-7:7) : 0;
+  g+=`<text class="endlbl" x="${X(last.t)+6}" y="${yl+4+sep}" fill="var(--c13)">${last.p13.toFixed(2).replace('.',',')}%</text>`;
+  g+=`<text class="endlbl" x="${X(last.t)+6}" y="${yf+4-sep}" fill="var(--c22)">${last.p22.toFixed(2).replace('.',',')}%</text>`;
+  g+=`<text class="ax" x="${W-R+6}" y="${Ya(last.pst)+4}" fill="var(--gold)">${last.pst.toFixed(1).replace('.',',')}% apur.</text>`;
+  g+=`<line class="xh" id="tlxh" y1="${T}" y2="${H-B}"/><rect id="tlhit" x="${L}" y="${T}" width="${W-L-R}" height="${H-T-B}" fill="transparent"/>`;
+  el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">${g}</svg>
+    <div class="tlleg"><span><i style="background:var(--c13)"></i>Lula</span><span><i style="background:var(--c22)"></i>Flávio Bolsonaro</span><span><i style="background:var(--gold);height:0;border-top:2px dashed var(--gold)"></i>Seções apuradas (eixo 0–100%)</span><span>${pts.length} totalizações registradas</span></div>`;
+  const svg = el.querySelector('svg'), hit = el.querySelector('#tlhit'), xh = el.querySelector('#tlxh'), tip = document.getElementById('tip');
+  hit.addEventListener('mousemove', ev=>{
+    const r = svg.getBoundingClientRect(); const t = t0 + ((ev.clientX-r.left)/r.width*W - L)/(W-L-R)*(t1-t0);
+    let best = pts[0]; for (const p of pts) if (Math.abs(p.t-t) < Math.abs(best.t-t)) best = p;
+    xh.style.display='block'; xh.setAttribute('x1',X(best.t)); xh.setAttribute('x2',X(best.t));
+    tip.innerHTML = `<b>${best.h}</b> · ${best.pst.toFixed(2).replace('.',',')}% das seções
+      <div class="row"><span><i style="background:var(--c13)"></i>Lula</span><span>${best.p13.toFixed(2).replace('.',',')}% · ${fmtN(best.v13)}</span></div>
+      <div class="row"><span><i style="background:var(--c22)"></i>Flávio Bolsonaro</span><span>${best.p22.toFixed(2).replace('.',',')}% · ${fmtN(best.v22)}</span></div>
+      <div class="row" style="color:var(--muted)"><span>Diferença</span><span>${Math.abs(best.v13-best.v22).toLocaleString('pt-BR')} votos</span></div>`;
+    tip.style.display='block'; tip.style.left = Math.min(ev.clientX+14, window.innerWidth-240)+'px'; tip.style.top = (ev.clientY+14)+'px';
+  });
+  hit.addEventListener('mouseleave', ()=>{ xh.style.display='none'; hideTip(); });
+}
+
 // ---------- loop ----------
 let timer = INTERVAL, busy = false;
 async function refresh(){
@@ -516,6 +585,9 @@ async function refresh(){
   const errs = [];
   try {
     const br = await fetchDoc(ELE_PRES, CARGO_PRES, 'br'); renderPres(br);
+    const hp = histFromDoc(br); if (hp){ histAdd(hp); try { localStorage.setItem('hist2t2026', JSON.stringify(hist.slice(-400))); } catch(e){} }
+    if (!refresh.histTick || Date.now()-refresh.histTick > 60000){ refresh.histTick = Date.now(); await loadHist(); }
+    renderTimeline();
   } catch(e){ errs.push(e.message); window.__diag.push('Falha ao buscar TSE: '+(e&&e.message)); showDiag(); }
   const ufRes = await Promise.allSettled(UFS.map(uf=>fetchDoc(ELE_PRES, CARGO_PRES, uf)));
   ufRes.forEach((r,i)=>{
@@ -535,6 +607,7 @@ async function refresh(){
 setInterval(()=>{ timer--; if (timer<=0){ refresh(); timer = INTERVAL; } document.getElementById('countdown').textContent = `Atualiza em ${timer}s`; }, 1000);
 document.getElementById('btnRefresh').addEventListener('click', refresh);
 loadBaseline().then(()=>{ renderProj(); renderMap(); }).catch(()=>{});
+loadHist().then(renderTimeline);
 refresh();
 </script>
 </body>
