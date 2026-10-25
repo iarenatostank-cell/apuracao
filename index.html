@@ -186,9 +186,9 @@
     </section>
     <section class="card">
       <h2>Resultado por estado</h2>
-      <p class="sub">Clique no cabeçalho para ordenar</p>
+      <p class="sub">Clique no cabeçalho para ordenar · “Flávio vs 1ºT” = diferença, em pontos, da fatia dele entre os dois candidatos hoje e no 1º turno</p>
       <div class="tblwrap"><table id="tbl"><thead><tr>
-        <th data-k="uf">UF</th><th data-k="p13">Lula</th><th data-k="p22">Flávio</th><th data-k="apur">Apurado</th><th data-k="proj13" title="Projeção da parcela de Lula no estado">Proj. Lula</th>
+        <th data-k="uf">UF</th><th data-k="p13">Lula</th><th data-k="p22">Flávio</th><th data-k="apur">Apurado</th><th data-k="proj13" title="Projeção da parcela de Lula no estado">Proj. Lula</th><th data-k="dif22" title="Fatia de Flávio entre os dois hoje menos a fatia dele entre os dois no 1º turno, em pontos percentuais">Flávio vs 1ºT</th>
       </tr></thead><tbody></tbody></table></div>
     </section>
   </div>
@@ -389,14 +389,20 @@ function showTip(ev, uf){
 }
 function hideTip(){ document.getElementById('tip').style.display='none'; }
 function renderTable(){
-  const rows = UFS.map(uf=>({uf, name:UF_NAMES[uf], ...(ufData[uf]||{p13:0,p22:0,apur:0,pv13:'0,00',pv22:'0,00',pvapur:'0,00'})}));
+  const rows = UFS.map(uf=>{
+    const d = ufData[uf]||{p13:0,p22:0,apur:0,pv13:'0,00',pv22:'0,00',pvapur:'0,00',v13:0,v22:0};
+    const b = baseline && baseline[uf]; let dif22 = null;
+    if (b && (b.l+b.f)>0 && (d.v13+d.v22)>0) dif22 = d.v22/(d.v13+d.v22)*100 - b.f/(b.l+b.f)*100;
+    return {uf, name:UF_NAMES[uf], ...d, dif22};
+  });
   rows.sort((a,b)=> sortKey==='uf' ? sortDir*a.uf.localeCompare(b.uf) : sortDir*((b[sortKey]||0)-(a[sortKey]||0)));
   document.querySelector('#tbl tbody').innerHTML = rows.map(r=>`<tr>
     <td>${r.name}</td>
     <td class="${r.p13>r.p22?'lead':''}"><span class="dot" style="background:var(--c13)"></span>${fmtP(r.pv13)}</td>
     <td class="${r.p22>r.p13?'lead':''}"><span class="dot" style="background:var(--c22)"></span>${fmtP(r.pv22)}</td>
     <td>${fmtP(r.pvapur)}</td>
-    <td style="color:var(--ink2)">${r.proj13!=null? fmtP(r.proj13):'—'}</td></tr>`).join('');
+    <td style="color:var(--ink2)">${r.proj13!=null? fmtP(r.proj13):'—'}</td>
+    <td style="font-weight:700;color:${r.dif22==null?'var(--muted)':r.dif22<0?'#ff8a8a':'#7fd6ff'}">${r.dif22==null?'—':(r.dif22>0?'+':'')+r.dif22.toFixed(1).replace('.',',')}</td></tr>`).join('');
 }
 document.querySelectorAll('#tbl th').forEach(th=>th.addEventListener('click',()=>{
   const k = th.dataset.k; if (sortKey===k) sortDir*=-1; else {sortKey=k; sortDir=1;} renderTable();
