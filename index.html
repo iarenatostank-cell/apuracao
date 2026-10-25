@@ -84,6 +84,10 @@
   .zz{position:absolute;right:0;bottom:0;width:44px;height:44px;border-radius:8px;display:grid;place-items:center;font-size:11px;font-weight:700;background:var(--card2);color:var(--ink2);border:1px solid rgba(255,255,255,.06);line-height:1.1;text-align:center}
   .zz.l{background:var(--c13);color:#fff} .zz.r{background:var(--c22);color:#fff} .zz.tie{background:#8c93a8;color:#fff}
   .zz:hover{outline:2px solid var(--gold)}
+  .modes{display:flex;gap:6px;margin:-4px 0 6px}
+  .modes button{cursor:pointer;border:1px solid var(--line);background:transparent;color:var(--ink2);padding:5px 11px;border-radius:999px;font:inherit;font-size:12px;font-weight:600}
+  .modes button.on{background:var(--gold);color:#1a1400;border-color:var(--gold)}
+  .lbl .val{font-size:9.5px;font-weight:800}
   .legend{display:flex;gap:16px;justify-content:center;margin-top:12px;font-size:12px;color:var(--ink2);flex-wrap:wrap}
   .legend span{display:inline-flex;align-items:center;gap:6px}
   .legend i{width:12px;height:12px;border-radius:3px;display:inline-block}
@@ -180,7 +184,8 @@
   <div class="grid2">
     <section class="card">
       <h2>Mapa por estado</h2>
-      <p class="sub">Cor = candidato à frente no estado · passe o mouse para detalhes</p>
+      <p class="sub" id="mapSub">Cor = candidato à frente no estado · passe o mouse para detalhes</p>
+      <div class="modes"><button class="on" data-mode="lead">Quem lidera</button><button data-mode="swing">Flávio vs 1º turno</button></div>
       <div class="map" id="map"></div>
       <div class="legend" id="legend"></div>
     </section>
@@ -357,7 +362,7 @@ function buildMap(){
   const map = document.getElementById('map'); const M = window.BR_MAP;
   const svg = [`<svg viewBox="0 0 ${M.w} ${M.h}" xmlns="http://www.w3.org/2000/svg">`];
   for (const uf of Object.keys(M.paths)) svg.push(`<path id="st-${uf}" class="st" d="${M.paths[uf]}"/>`);
-  for (const uf of Object.keys(M.centers)){ const [x,y]=M.centers[uf]; svg.push(`<text class="lbl" x="${x}" y="${y}">${uf.toUpperCase()}</text>`); }
+  for (const uf of Object.keys(M.centers)){ const [x,y]=M.centers[uf]; svg.push(`<text class="lbl" x="${x}" y="${y}"><tspan x="${x}" dy="-0.35em">${uf.toUpperCase()}</tspan><tspan class="val" id="val-${uf}" x="${x}" dy="1.15em"></tspan></text>`); }
   svg.push('</svg>');
   map.innerHTML = svg.join('') + '<div class="zz" id="st-zz">ZZ<br><small>exterior</small></div>';
   for (const uf of UFS){
@@ -366,23 +371,57 @@ function buildMap(){
     el.addEventListener('mouseleave', hideTip);
   }
 }
+let mapMode = 'lead';
+function swingUf(uf){
+  const d = ufData[uf], b = baseline && baseline[uf];
+  if (!d || !b || (b.l+b.f)===0 || (d.v13+d.v22)===0) return null;
+  return d.v22/(d.v13+d.v22)*100 - b.f/(b.l+b.f)*100;
+}
+function swingColor(v){ // divergente: vermelho (perde) · cinza (igual) · azul (ganha), saturando em ±10 p.p.
+  const t = Math.max(-1, Math.min(1, v/10));
+  const mix = (a,b,k)=>a.map((c,i)=>Math.round(c+(b[i]-c)*k));
+  const mid=[108,116,140], red=[232,80,58], blue=[61,134,224];
+  const c = t<0 ? mix(mid, red, -t) : mix(mid, blue, t);
+  return `rgb(${c.join(',')})`;
+}
 function renderMap(){
   if (!document.querySelector('#map svg')) buildMap();
   for (const uf of UFS){
     const el = document.getElementById('st-'+uf); if(!el) continue;
-    const d = ufData[uf];
-    el.classList.remove('l','r','tie'); el.style.opacity = '';
-    if (d && d.total>0){ el.classList.add(d.p13>d.p22?'l':d.p22>d.p13?'r':'tie'); el.style.opacity = 0.45 + 0.55*Math.min(1,d.apur/100); }
+    const d = ufData[uf]; const val = document.getElementById('val-'+uf);
+    el.classList.remove('l','r','tie'); el.style.opacity = ''; el.style.fill = '';
+    if (mapMode==='lead'){
+      if (val) val.textContent = '';
+      if (d && d.total>0){ el.classList.add(d.p13>d.p22?'l':d.p22>d.p13?'r':'tie'); el.style.opacity = 0.45 + 0.55*Math.min(1,d.apur/100); }
+    } else {
+      const sw = swingUf(uf);
+      if (sw===null){ if (val) val.textContent=''; if (uf==='zz') el.textContent='ZZ'; continue; }
+      el.style.fill = swingColor(sw); el.style.opacity = 0.55 + 0.45*Math.min(1, (d.apur||0)/100);
+      if (uf==='zz') el.style.background = swingColor(sw);
+      const txt = (sw>0?'+':'')+sw.toFixed(1).replace('.',',');
+      if (val) val.textContent = txt; else if (uf==='zz') el.innerHTML = 'ZZ<br><small>'+txt+'</small>';
+    }
   }
-  document.getElementById('legend').innerHTML = `<span><i style="background:var(--c13)"></i>Lula à frente</span><span><i style="background:var(--c22)"></i>Flávio Bolsonaro à frente</span><span><i style="background:var(--card2)"></i>Sem votos apurados</span><span>Opacidade = % apurado</span>`;
+  if (mapMode==='lead'){
+    document.getElementById('mapSub').textContent = 'Cor = candidato à frente no estado · passe o mouse para detalhes';
+    document.getElementById('legend').innerHTML = `<span><i style="background:var(--c13)"></i>Lula à frente</span><span><i style="background:var(--c22)"></i>Flávio Bolsonaro à frente</span><span><i style="background:var(--card2)"></i>Sem votos apurados</span><span>Opacidade = % apurado</span>`;
+    const zz=document.getElementById('st-zz'); if (zz){ zz.style.background=''; zz.innerHTML='ZZ<br><small>exterior</small>'; }
+  } else {
+    document.getElementById('mapSub').textContent = 'Número = quanto a fatia de Flávio (entre os dois candidatos) mudou em relação ao 1º turno, em pontos · atualiza a cada ciclo';
+    document.getElementById('legend').innerHTML = `<span><i style="background:${swingColor(-10)}"></i>Flávio perde (−10 ou mais)</span><span><i style="background:${swingColor(0)}"></i>Igual ao 1º turno</span><span><i style="background:${swingColor(10)}"></i>Flávio ganha (+10 ou mais)</span><span>Opacidade = % apurado</span>`;
+  }
   renderTable();
 }
+document.querySelectorAll('.modes button').forEach(bt=>bt.addEventListener('click',()=>{
+  mapMode = bt.dataset.mode; document.querySelectorAll('.modes button').forEach(x=>x.classList.toggle('on', x===bt)); renderMap();
+}));
 function showTip(ev, uf){
   const d = ufData[uf]; const tip = document.getElementById('tip');
   tip.innerHTML = `<b>${UF_NAMES[uf]}</b>` + (d? `
     <div class="row"><span><i style="background:var(--c13)"></i>Lula</span><span>${fmtP(d.pv13)} · ${fmtN(d.v13)}</span></div>
     <div class="row"><span><i style="background:var(--c22)"></i>Flávio Bolsonaro</span><span>${fmtP(d.pv22)} · ${fmtN(d.v22)}</span></div>
-    <div class="row" style="color:var(--muted)"><span>Seções totalizadas</span><span>${fmtP(d.pvapur)}</span></div>` : '<div class="row">sem dados</div>');
+    <div class="row" style="color:var(--muted)"><span>Seções totalizadas</span><span>${fmtP(d.pvapur)}</span></div>
+    ${(()=>{const sw=swingUf(uf); return sw===null?'':`<div class="row"><span>Flávio vs 1º turno</span><span style="font-weight:700;color:${sw<0?'#ff8a8a':'#7fd6ff'}">${sw>0?'+':''}${sw.toFixed(1).replace('.',',')} p.p.</span></div>`;})()}` : '<div class="row">sem dados</div>');
   tip.style.display='block';
   const x = Math.min(ev.clientX+14, window.innerWidth-230), y = ev.clientY+14;
   tip.style.left = x+'px'; tip.style.top = y+'px';
@@ -495,7 +534,7 @@ async function refresh(){
 }
 setInterval(()=>{ timer--; if (timer<=0){ refresh(); timer = INTERVAL; } document.getElementById('countdown').textContent = `Atualiza em ${timer}s`; }, 1000);
 document.getElementById('btnRefresh').addEventListener('click', refresh);
-loadBaseline().then(()=>renderProj()).catch(()=>{});
+loadBaseline().then(()=>{ renderProj(); renderMap(); }).catch(()=>{});
 refresh();
 </script>
 </body>
